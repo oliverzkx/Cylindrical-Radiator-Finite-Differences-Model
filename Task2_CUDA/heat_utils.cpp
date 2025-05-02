@@ -14,16 +14,25 @@ void cpu_heat_propagation(float* data, int n, int m, int p,
     auto start = high_resolution_clock::now();
 
     for (int step = 0; step < p; ++step) {
-        for (int u = 0; u < n; ++u) {
+        for (int u = 1; u < n - 1; ++u) {
             for (int j = 2; j < m - 2; ++j) {
-                next[u * m + j] = (
-                    1.60f * prev[u * m + j - 2] +
-                    1.55f * prev[u * m + j - 1] +
-                    0.60f * prev[u * m + j + 1] +
-                    0.25f * prev[u * m + j + 2]
-                ) / 5.0f;
+                next[u * m + j] =
+                    (1.60f * prev[u * m + j - 2] +
+                     1.55f * prev[u * m + j - 1] +
+                     0.60f * prev[u * m + j + 1] +
+                     0.25f * prev[u * m + j + 2] +
+                     1.00f * prev[u * m + j]) / 5.0f;
             }
-            // Copy border columns unchanged
+        }
+
+        // Preserve boundary rows
+        for (int j = 0; j < m; ++j) {
+            next[0 * m + j] = prev[0 * m + j];             // top row
+            next[(n - 1) * m + j] = prev[(n - 1) * m + j]; // bottom row
+        }
+
+        // Preserve boundary columns
+        for (int u = 0; u < n; ++u) {
             next[u * m + 0] = prev[u * m + 0];
             next[u * m + 1] = prev[u * m + 1];
             next[u * m + m - 2] = prev[u * m + m - 2];
@@ -39,7 +48,7 @@ void cpu_heat_propagation(float* data, int n, int m, int p,
                     sum += prev[i * m + j];
                 float avg = sum / m;
                 if (avg >= stop_avg) {
-                    std::cout << "🛑 CPU stopped at iteration " << step + 1 << "\n";
+                    std::cout << "🔴 CPU stopped at iteration " << step + 1 << "\n";
                     break;
                 }
             }
@@ -54,6 +63,7 @@ void cpu_heat_propagation(float* data, int n, int m, int p,
 
     std::copy(prev.begin(), prev.end(), data);
 }
+
 
 void compare_results(const float* cpu_data, const float* gpu_data, int size,
                      const float* cpu_avg, const float* gpu_avg, int rows, float threshold) {
@@ -85,4 +95,30 @@ void compare_results(const float* cpu_data, const float* gpu_data, int size,
         else
             std::cout << " ✅\n";
     }
+}
+
+void compare_results_verbose(const float* cpu, const float* gpu, int size, float threshold) {
+    float max_diff = 0.0f;
+    int mismatch_count = 0;
+
+    for (int i = 0; i < size; ++i) {
+        float diff = std::abs(cpu[i] - gpu[i]);
+        if (diff > threshold) {
+            std::cout << "[Mismatch] Index: " << i
+                      << " | CPU: " << cpu[i]
+                      << " | GPU: " << gpu[i]
+                      << " | Diff: " << diff << "\n";
+            mismatch_count++;
+        }
+        if (diff > max_diff)
+            max_diff = diff;
+    }
+
+    if (mismatch_count > 0) {
+        std::cout << "[Compare] 🔺 Total mismatches above " << threshold << ": " << mismatch_count << "\n";
+    } else {
+        std::cout << "[Compare] ✅ All values within threshold.\n";
+    }
+
+    std::cout << "[Compare] Max absolute difference: " << max_diff << "\n";
 }

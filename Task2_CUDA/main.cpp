@@ -67,5 +67,9 @@ int main(int argc, char* argv[]) {
                         cpu_avg.data(), gpu_avg.data(), n);
     }
 
+    if (show_timing && !use_cpu) {
+        compare_results_verbose(cpu_data.data(), gpu_data.data(), n * m);
+    }
+
     return 0;
 }
