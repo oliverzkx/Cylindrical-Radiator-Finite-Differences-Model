@@ -3,6 +3,7 @@
 #include <vector>
 #include <chrono>
 #include <cmath>
+#include <iomanip>  // for std::setprecision
 
 using namespace std::chrono;
 
@@ -123,7 +124,7 @@ void compare_results_verbose(const float* cpu, const float* gpu, int size, float
     std::cout << "[Compare] Max absolute difference: " << max_diff << "\n";
 }
 
-#include <iomanip>  // for std::setprecision
+
 
 void print_compare_debug(const float* cpu, const float* gpu, int n, int m, float threshold) {
     int mismatch_count = 0;
