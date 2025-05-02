@@ -74,7 +74,7 @@ Fixed block size to 64×4, tested different grid sizes (p=1000):
 ![](./output.png)
 
 ✅ All tests passed numerical threshold of `1e-4`.
- 🚫 Avoid early-stopping when comparing CPU-GPU results.
+🚫 Avoid early-stopping when comparing CPU-GPU results.
 
 ## 🧠 Insights
 
