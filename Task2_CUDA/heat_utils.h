@@ -8,3 +8,5 @@ void compare_results(const float* cpu_data, const float* gpu_data, int size,
                      int rows = 0, float threshold = 1e-4f);
 
 void compare_results_verbose(const float* cpu, const float* gpu, int size, float threshold = 1e-4f);
+
+void print_compare_debug(const float* cpu, const float* gpu, int n, int m, float threshold = 1e-4f);

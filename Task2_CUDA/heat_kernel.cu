@@ -8,11 +8,16 @@ __global__ void heat_kernel(float* next, const float* prev, int n, int m) {
     // Compute global coordinates for each thread
     int j = threadIdx.x + blockIdx.x * blockDim.x;
     int i = threadIdx.y + blockIdx.y * blockDim.y;
+    int idx = i * m + j;
 
     // Prevent out-of-bounds memory access
-    if (i >= n || j >= m) return;
+    if (i >= n || j >= m || j < 2 || j >= m - 2) return;
 
-    int idx = i * m + j;
+
+    if (i < 2 && j < 6) {
+        printf("GPU debug i=%d j=%d idx=%d prev[idx - 2]=%.4f\n", i, j, idx, prev[idx - 2]);
+    }
+
 
     // Update only non-border columns
     if (j >= 2 && j < m - 2) {
@@ -89,6 +94,8 @@ extern "C" void launch_cuda_heat(float* host_prev, int n, int m, int p, bool use
 
     for (int step = 0; step < p; ++step) {
         heat_kernel<<<grid, block>>>(d_next, d_prev, n, m);
+        //  Add this immediately after kernel launch
+        cudaDeviceSynchronize();
         std::swap(d_prev, d_next);
 
         if (use_stop) {

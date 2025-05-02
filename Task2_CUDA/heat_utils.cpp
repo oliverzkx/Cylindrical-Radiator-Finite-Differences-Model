@@ -122,3 +122,38 @@ void compare_results_verbose(const float* cpu, const float* gpu, int size, float
 
     std::cout << "[Compare] Max absolute difference: " << max_diff << "\n";
 }
+
+#include <iomanip>  // for std::setprecision
+
+void print_compare_debug(const float* cpu, const float* gpu, int n, int m, float threshold) {
+    int mismatch_count = 0;
+    float max_diff = 0.0f;
+
+    std::cout << "[Debug] Showing mismatches > " << threshold << ":\n";
+
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < m; ++j) {
+            int idx = i * m + j;
+            float diff = std::abs(cpu[idx] - gpu[idx]);
+            if (diff > threshold) {
+                mismatch_count++;
+                std::cout << "[MISMATCH] (i=" << i << ", j=" << j << ") | "
+                          << "CPU: " << std::fixed << std::setprecision(6) << cpu[idx]
+                          << " | GPU: " << gpu[idx]
+                          << " | Δ = " << diff << "\n";
+                if (mismatch_count >= 50) {
+                    std::cout << "🔺 Too many mismatches, stopping at 50 for readability.\n";
+                    return;
+                }
+            }
+            if (diff > max_diff)
+                max_diff = diff;
+        }
+    }
+
+    if (mismatch_count == 0) {
+        std::cout << "✅ No mismatches above threshold.\n";
+    } else {
+        std::cout << "🔍 Total mismatches: " << mismatch_count << ", max diff: " << max_diff << "\n";
+    }
+}
