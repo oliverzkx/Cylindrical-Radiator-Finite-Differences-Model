@@ -2,6 +2,7 @@
 #include <iostream>
 #include <vector>
 
+
 // CUDA kernel for 1D heat propagation (row-wise only)
 __global__ void heat_kernel(float* prev, float* next, int n, int m) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -29,7 +30,7 @@ __global__ void row_avg_kernel(float* data, float* row_avg, int n, int m) {
 }
 
 // Host function to perform heat propagation using GPU
-void launch_cuda_heat(float* host_prev, int n, int m, int p, bool use_stop, float stop_avg, bool show_timing) {
+extern "C" void launch_cuda_heat(float* host_prev, int n, int m, int p, bool use_stop, float stop_avg, bool show_timing) {
     float *d_prev, *d_next, *d_avg;
     cudaEvent_t start_total, stop_total;
     cudaEvent_t start_kernel, stop_kernel;
