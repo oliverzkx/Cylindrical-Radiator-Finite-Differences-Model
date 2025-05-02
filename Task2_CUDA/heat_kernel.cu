@@ -29,24 +29,24 @@ __global__ void row_avg_kernel(float* data, float* row_avg, int n, int m) {
 }
 
 // Host function to perform heat propagation using GPU
-void launch_cuda_heat(float* host_prev, int n, int m, int p, bool use_stop, float stop_avg) {
+void launch_cuda_heat(float* host_prev, int n, int m, int p, bool use_stop, float stop_avg, bool show_timing) {
     float *d_prev, *d_next, *d_avg;
-    cudaEvent_t start_total, stop_total, start_kernel, stop_kernel, start_h2d, stop_h2d, start_d2h, stop_d2h;
+    cudaEvent_t start_total, stop_total;
+    cudaEvent_t start_kernel, stop_kernel;
+    cudaEvent_t start_avg_kernel, stop_avg_kernel;
+    cudaEvent_t start_h2d, stop_h2d, start_d2h, stop_d2h;
 
-    // Create events
-    cudaEventCreate(&start_total);
-    cudaEventCreate(&stop_total);
-    cudaEventCreate(&start_kernel);
-    cudaEventCreate(&stop_kernel);
-    cudaEventCreate(&start_h2d);
-    cudaEventCreate(&stop_h2d);
-    cudaEventCreate(&start_d2h);
-    cudaEventCreate(&stop_d2h);
+    // Create events for timing
+    cudaEventCreate(&start_total);  cudaEventCreate(&stop_total);
+    cudaEventCreate(&start_kernel); cudaEventCreate(&stop_kernel);
+    cudaEventCreate(&start_avg_kernel); cudaEventCreate(&stop_avg_kernel);
+    cudaEventCreate(&start_h2d);    cudaEventCreate(&stop_h2d);
+    cudaEventCreate(&start_d2h);    cudaEventCreate(&stop_d2h);
 
     // Start total timer
     cudaEventRecord(start_total);
 
-    // Allocate device memory
+    // Allocate memory
     cudaMalloc(&d_prev, n * m * sizeof(float));
     cudaMalloc(&d_next, n * m * sizeof(float));
     cudaMalloc(&d_avg, n * sizeof(float));
@@ -57,10 +57,12 @@ void launch_cuda_heat(float* host_prev, int n, int m, int p, bool use_stop, floa
     cudaEventRecord(stop_h2d);
     cudaEventSynchronize(stop_h2d);
 
-    // Configure CUDA execution
+    // Grid setup
     dim3 block(16, 16);
     dim3 grid((m + 15) / 16, (n + 15) / 16);
     std::vector<float> h_avg(n);
+
+    float total_avg_time = 0.0f;
 
     // Start kernel timing
     cudaEventRecord(start_kernel);
@@ -70,7 +72,16 @@ void launch_cuda_heat(float* host_prev, int n, int m, int p, bool use_stop, floa
         std::swap(d_prev, d_next);
 
         if (use_stop) {
+            // Independent timing for row average kernel
+            cudaEventRecord(start_avg_kernel);
             row_avg_kernel<<<(n + 255) / 256, 256>>>(d_prev, d_avg, n, m);
+            cudaEventRecord(stop_avg_kernel);
+            cudaEventSynchronize(stop_avg_kernel);
+
+            float avg_time = 0.0f;
+            cudaEventElapsedTime(&avg_time, start_avg_kernel, stop_avg_kernel);
+            total_avg_time += avg_time;
+
             cudaMemcpy(h_avg.data(), d_avg, n * sizeof(float), cudaMemcpyDeviceToHost);
             for (int i = 0; i < n; ++i) {
                 if (h_avg[i] >= stop_avg) {
@@ -96,22 +107,27 @@ END_KERNEL:
     cudaEventRecord(stop_total);
     cudaEventSynchronize(stop_total);
 
-    // Print timing results
-    float t_h2d, t_kernel, t_d2h, t_total;
-    cudaEventElapsedTime(&t_h2d, start_h2d, stop_h2d);
-    cudaEventElapsedTime(&t_kernel, start_kernel, stop_kernel);
-    cudaEventElapsedTime(&t_d2h, start_d2h, stop_d2h);
+    // Read elapsed times
+    float t_total, t_kernel, t_avg, t_h2d, t_d2h;
     cudaEventElapsedTime(&t_total, start_total, stop_total);
+    cudaEventElapsedTime(&t_kernel, start_kernel, stop_kernel);
+    cudaEventElapsedTime(&t_h2d, start_h2d, stop_h2d);
+    cudaEventElapsedTime(&t_d2h, start_d2h, stop_d2h);
+    t_avg = total_avg_time;
 
+    // Output timing results
     std::cout << "[GPU] Memcpy H2D:       " << t_h2d    << " ms\n";
     std::cout << "[GPU] Propagation Time: " << t_kernel << " ms\n";
+    std::cout << "[GPU] Row Average Time: " << t_avg    << " ms\n";
     std::cout << "[GPU] Memcpy D2H:       " << t_d2h    << " ms\n";
     std::cout << "[GPU] Total Time:       " << t_total  << " ms\n";
 
     // Cleanup
     cudaFree(d_prev); cudaFree(d_next); cudaFree(d_avg);
-    cudaEventDestroy(start_total); cudaEventDestroy(stop_total);
+    cudaEventDestroy(start_total);  cudaEventDestroy(stop_total);
     cudaEventDestroy(start_kernel); cudaEventDestroy(stop_kernel);
-    cudaEventDestroy(start_h2d); cudaEventDestroy(stop_h2d);
-    cudaEventDestroy(start_d2h); cudaEventDestroy(stop_d2h);
+    cudaEventDestroy(start_avg_kernel); cudaEventDestroy(stop_avg_kernel);
+    cudaEventDestroy(start_h2d);    cudaEventDestroy(stop_h2d);
+    cudaEventDestroy(start_d2h);    cudaEventDestroy(stop_d2h);
 }
+
