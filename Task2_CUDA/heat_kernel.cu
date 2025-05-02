@@ -4,49 +4,56 @@
 
 
 // CUDA kernel for 1D heat propagation (row-wise only)
+// CUDA kernel for 2D heat propagation with 5-point stencil (row-wise only)
 __global__ void heat_kernel(float* next, const float* prev, int n, int m) {
-    // Compute global coordinates for each thread
     int j = threadIdx.x + blockIdx.x * blockDim.x;
     int i = threadIdx.y + blockIdx.y * blockDim.y;
+    if (i >= n || j >= m) return;
+
     int idx = i * m + j;
 
-    // Prevent out-of-bounds memory access
-    if (i >= n || j >= m || j < 2 || j >= m - 2) return;
+    // First: copy all values by default (makes it equivalent to CPU)
+    next[idx] = prev[idx];
 
-
-    if (i < 2 && j < 6) {
-        printf("GPU debug i=%d j=%d idx=%d prev[idx - 2]=%.4f\n", i, j, idx, prev[idx - 2]);
-    }
-
-
-    // Update only non-border columns
-    if (j >= 2 && j < m - 2) {
-        next[idx] = (
-            1.60f * prev[idx - 2] +
-            1.55f * prev[idx - 1] +
-            1.00f * prev[idx]     +
-            0.60f * prev[idx + 1] +
-            0.25f * prev[idx + 2]
-        ) / 5.0f;
-    } else {
-        // Preserve fixed boundary values
-        next[idx] = prev[idx];
+    // Then: only stencil region will overwrite with new value
+    if (i >= 1 && i < n - 1 && j >= 2 && j < m - 2) {
+        next[idx] =
+            (1.60f * prev[i * m + (j - 2)] +
+             1.55f * prev[i * m + (j - 1)] +
+             1.00f * prev[i * m + j]     +
+             0.60f * prev[i * m + (j + 1)] +
+             0.25f * prev[i * m + (j + 2)]) / 5.0f;
     }
 }
+
 
 
 
 // CUDA kernel to compute the average temperature of each row
-__global__ void row_avg_kernel(float* data, float* row_avg, int n, int m) {
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
-    if (row >= n) return;
+__global__ void row_avg_kernel(const float* data, float* row_avg, int n, int m) {
+    int i = blockIdx.x;         // Each block handles one row
+    int j = threadIdx.x;        // Each thread processes one column in the row
 
-    float sum = 0.0f;
-    for (int j = 0; j < m; ++j)
-        sum += data[row * m + j];
+    if (i >= n || j >= m) return;
 
-    row_avg[row] = sum / m;
+    // Shared memory to accumulate sum per row
+    __shared__ float local_sum[1];
+
+    // Initialize shared memory (only thread 0)
+    if (j == 0) local_sum[0] = 0.0f;
+    __syncthreads();
+
+    // Each thread adds its column's value to shared row sum
+    atomicAdd(&local_sum[0], data[i * m + j]);
+    __syncthreads();
+
+    // First thread in the block writes the average
+    if (j == 0) {
+        row_avg[i] = local_sum[0] / m;
+    }
 }
+
+
 
 // Host function to perform heat propagation using GPU
 extern "C" void launch_cuda_heat(float* host_prev, int n, int m, int p, bool use_stop, float stop_avg, bool show_timing) {
@@ -101,7 +108,7 @@ extern "C" void launch_cuda_heat(float* host_prev, int n, int m, int p, bool use
         if (use_stop) {
             // Time row average calculation
             cudaEventRecord(start_avg_kernel);
-            row_avg_kernel<<<(n + 255) / 256, 256>>>(d_prev, d_avg, n, m);
+            row_avg_kernel<<<n, m>>>(d_prev, d_avg, n, m);
             cudaEventRecord(stop_avg_kernel);
             cudaEventSynchronize(stop_avg_kernel);
 
